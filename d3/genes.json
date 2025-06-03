@@ -1,0 +1,13 @@
+{
+      "nodes": [
+              { "id": "GeneA", "description": "Transcription factor A" },
+                  { "id": "GeneB", "description": "Kinase B involved in signaling" },
+                      { "id": "GeneC", "description": "DNA-binding protein C" }
+                        ],
+                          "links": [
+                                  { "source": "GeneA", "target": "GeneB", "interaction": "activation" },
+                                      { "source": "GeneB", "target": "GeneC", "interaction": "inhibition" },
+                                          { "source": "GeneC", "target": "GeneA", "interaction": "binding" }
+                                            ]
+}
+
