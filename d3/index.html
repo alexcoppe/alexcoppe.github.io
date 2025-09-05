@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<html>
+<head>
+  <title>Responsive D3 Network with Tooltip & Highlight</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+    }
+    h2 {
+      margin: 6px 0;
+    }
+    svg {
+      width: 95%;
+      height: 70vh; /* 70% of viewport height */
+      border: 1px solid #ccc;
+      display: block;
+      margin: auto;
+    }
+    .table-container {
+      width: 95%;
+      height: 28vh; /* 28% of viewport height */
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      margin: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px 10px;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: break-word;
+    }
+    th {
+      background: #f2f2f2;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    /* Tooltip bubble */
+    .tooltip {
+      position: absolute;
+      background: white;
+      border: 1px solid #999;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 14px;
+      max-width: 350px;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+      pointer-events: none;
+      display: none;
+      white-space: pre-line;
+    }
+    .dimmed {
+      opacity: 0.1;
+    }
+    .highlight {
+      stroke: black;
+      stroke-width: 2px;
+    }
+  </style>
+</head>
+<body>
+  <h2>D3.js Responsive Network Graph</h2>
+  <svg id="network" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid meet"></svg>
+
+  <div id="tooltip" class="tooltip"></div>
+
+  <h2>Interaction Table</h2>
+  <div class="table-container">
+    <table id="interaction-table">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Targets</th>
+          <th>Interactions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+  d3.json("data.json").then(function(data) {
+    const nodes = data.nodes;
+    const links = data.links || data;
+
+    // color scale based on node_type
+    const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+    const svg = d3.select("#network");
+    const width = 1200;
+    const height = 600;
+    const g = svg.append("g");
+
+    const simulation = d3.forceSimulation(nodes)
+      .force("link", d3.forceLink(links).id(d => d.id).distance(150))
+      .force("charge", d3.forceManyBody().strength(-400))
+      .force("center", d3.forceCenter(width / 2, height / 2));
+
+    const link = g.append("g")
+      .attr("stroke", "#999")
+      .attr("stroke-opacity", 0.6)
+      .selectAll("line")
+      .data(links)
+      .join("line")
+      .attr("stroke-width", 1.5);
+
+    const node = g.append("g")
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 1.5)
+      .selectAll("circle")
+      .data(nodes)
+      .join("circle")
+      .attr("r", 16)
+      .attr("fill", d => color(d.node_type))
+      .call(drag(simulation))
+      .on("click", showTooltip);
+
+    const label = g.append("g")
+      .selectAll("text")
+      .data(nodes)
+      .join("text")
+      .text(d => d.id)
+      .attr("font-size", 12)
+      .attr("dy", "-1em");
+
+    simulation.on("tick", () => {
+      link
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+
+      node
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y);
+
+      label
+        .attr("x", d => d.x)
+        .attr("y", d => d.y);
+    });
+
+    const tooltip = d3.select("#tooltip");
+
+    function showTooltip(event, d) {
+      event.stopPropagation();
+
+      const outgoing = links.filter(l => (l.source.id || l.source) === d.id);
+      const targets = [...new Set(outgoing.map(l => l.target.id || l.target))];
+      const outInteractions = [...new Set(outgoing.map(l => l.interaction))];
+
+      const incoming = links.filter(l => (l.target.id || l.target) === d.id);
+      const sources = [...new Set(incoming.map(l => l.source.id || l.source))];
+      const inInteractions = [...new Set(incoming.map(l => l.interaction))];
+
+      let html = `Gene name: ${d.id}\n`;
+      html += `Sources: ${sources.length ? sources.join(", ") : "None"}\n`;
+      html += `Targets: ${targets.length ? targets.join(", ") : "None"}\n`;
+      html += `Pathways: ${[...new Set([...outInteractions, ...inInteractions])].join("; ") || "None"}`;
+
+      tooltip
+        .style("left", (event.pageX + 15) + "px")
+        .style("top", (event.pageY - 20) + "px")
+        .style("display", "block")
+        .text(html);
+
+      highlightNode(d);
+    }
+
+    function highlightNode(d) {
+      const connectedNodes = new Set();
+      const connectedLinks = [];
+
+      links.forEach(l => {
+        const sourceId = l.source.id || l.source;
+        const targetId = l.target.id || l.target;
+        if (sourceId === d.id || targetId === d.id) {
+          connectedNodes.add(sourceId);
+          connectedNodes.add(targetId);
+          connectedLinks.push(l);
+        }
+      });
+
+      node.classed("dimmed", n => !connectedNodes.has(n.id));
+      label.classed("dimmed", n => !connectedNodes.has(n.id));
+      link.classed("dimmed", l => !connectedLinks.includes(l))
+          .classed("highlight", l => connectedLinks.includes(l));
+    }
+
+    svg.on("click", function(event) {
+      if (event.target.tagName !== "circle") {
+        tooltip.style("display", "none");
+        resetHighlight();
+      }
+    });
+
+    function resetHighlight() {
+      node.classed("dimmed", false);
+      label.classed("dimmed", false);
+      link.classed("dimmed", false).classed("highlight", false);
+    }
+
+    const zoom = d3.zoom().on("zoom", (event) => {
+      g.attr("transform", event.transform);
+    });
+    svg.call(zoom);
+
+    function zoomToFit() {
+      const bounds = g.node().getBBox();
+      const fullWidth = svg.node().clientWidth;
+      const fullHeight = svg.node().clientHeight;
+      const dx = bounds.width;
+      const dy = bounds.height;
+      const x = bounds.x + dx / 2;
+      const y = bounds.y + dy / 2;
+
+      const scale = 0.9 / Math.max(dx / fullWidth, dy / fullHeight);
+      const translate = [fullWidth / 2 - scale * x, fullHeight / 2 - scale * y];
+
+      svg.transition().duration(1000).call(
+        zoom.transform,
+        d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+      );
+    }
+
+    simulation.on("end", zoomToFit);
+    window.addEventListener("resize", zoomToFit);
+
+    function drag(simulation) {
+      function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+      function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+      return d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended);
+    }
+
+    // === TABLE with colored rows & hover interaction ===
+    const grouped = d3.group(links, d => d.source.id || d.source);
+    const nodeById = new Map(nodes.map(d => [d.id, d]));
+    const tbody = d3.select("#interaction-table tbody");
+
+    grouped.forEach((values, key) => {
+      const targets = [...new Set(values.map(d => d.target.id || d.target))];
+      const interactions = [...new Set(values.map(d => d.interaction))];
+
+      // find node_type for the source
+      const nodeObj = nodeById.get(key);
+      const rowColor = nodeObj ? color(nodeObj.node_type) : "#fff";
+
+      const row = tbody.append("tr")
+        .style("background-color", rowColor + "33") // transparent version
+        .on("mouseenter", () => {
+          if (nodeObj) highlightNode(nodeObj);
+        })
+        .on("mouseleave", () => {
+          resetHighlight();
+        });
+
+      row.append("td").text(key);
+      row.append("td").text(targets.join(", "));
+      row.append("td").text(interactions.join("; "));
+    });
+
+    // Legend based on node_type
+    const nodeTypes = [...new Set(nodes.map(d => d.node_type))];
+    const legend = svg.append("g")
+      .attr("transform", "translate(20,20)");
+
+    legend.selectAll("circle")
+      .data(nodeTypes)
+      .enter()
+      .append("circle")
+      .attr("cx", 0)
+      .attr("cy", (d,i) => i * 20)
+      .attr("r", 6)
+      .attr("fill", d => color(d));
+
+    legend.selectAll("text")
+      .data(nodeTypes)
+      .enter()
+      .append("text")
+      .attr("x", 12)
+      .attr("y", (d,i) => i * 20 + 5)
+      .text(d => d)
+      .attr("font-size", 12)
+      .attr("fill", "#333");
+  });
+</script>
+</body>
+</html>
