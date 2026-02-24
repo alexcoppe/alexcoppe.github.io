@@ -2,36 +2,47 @@
 <meta charset="utf-8">
 <html>
 <head>
-  <title>Responsive D3 Network with Tooltip & Highlight</title>
+  <title>Responsive D3 Network — Colored by node_type</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
+    /* Page / layout */
     html, body {
       margin: 0;
       padding: 0;
       height: 100%;
       width: 100%;
       font-family: Arial, sans-serif;
-      text-align: center;
       display: flex;
       flex-direction: column;
+      align-items: center;
+      background-color: rgb(252,246,229);
     }
     h2 {
-      margin: 6px 0;
+      margin: 8px 0;
+      color: rgb(189,83,43); /* titles */
     }
+
+    /* SVG (network) */
     svg {
       width: 95%;
-      height: 70vh; /* 70% of viewport height */
+      height: 70vh;
       border: 1px solid #ccc;
+      background-color: rgb(252,246,229);
       display: block;
-      margin: auto;
+      margin: 0 auto;
     }
+
+    /* Table container */
     .table-container {
       width: 95%;
-      height: 28vh; /* 28% of viewport height */
+      height: 28vh;
       overflow-y: auto;
       border: 1px solid #ccc;
-      margin: auto;
+      background-color: rgb(252,246,229);
+      margin: 12px auto 24px;
     }
+
+    /* Table */
     table {
       border-collapse: collapse;
       width: 100%;
@@ -42,15 +53,16 @@
       padding: 6px 10px;
       text-align: left;
       vertical-align: top;
-      overflow-wrap: break-word;
+      word-wrap: break-word;
     }
     th {
-      background: #f2f2f2;
+      background: rgb(200,200,200); /* grey header */
       position: sticky;
       top: 0;
       z-index: 1;
     }
-    /* Tooltip bubble */
+
+    /* Tooltip */
     .tooltip {
       position: absolute;
       background: white;
@@ -58,22 +70,95 @@
       border-radius: 6px;
       padding: 10px;
       font-size: 14px;
-      max-width: 350px;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+      max-width: 380px;
+      box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
       pointer-events: none;
       display: none;
       white-space: pre-line;
     }
-    .dimmed {
-      opacity: 0.1;
+
+    #info-btn {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  background-color: rgb(189,83,43);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#info-btn:hover {
+  background-color: rgb(160,60,30);
+}
+
+/* Hidden info panel */
+.info-panel {
+  display: none; /* hidden initially */
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  max-width: 700px;
+  background: white;
+  border: 2px solid rgb(189,83,43);
+  border-radius: 10px;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+  padding: 20px;
+  z-index: 1000;
+}
+
+/* Close button */
+#close-info {
+  float: right;
+  font-size: 22px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+    /* Dim / highlight */
+    .dimmed { opacity: 0.12; }
+    .highlight { stroke: black; stroke-width: 2px; }
+
+    /* Row highlight */
+    tr.row-highlight { outline: 2px solid rgba(0,0,0,0.12); }
+
+    /* Links in table */
+    .gene-link {
+      font-size: 12px;
+      color: rgb(60,60,60); /* darker grey */
+      text-decoration: none;
     }
-    .highlight {
-      stroke: black;
-      stroke-width: 2px;
+    .gene-link:hover { text-decoration: underline; }
+
+    /* Interactions column same style as links */
+    td:last-child {
+      font-size: 12px;
+      color: rgb(60,60,60);
     }
   </style>
 </head>
 <body>
+<button id="info-btn">About</button>
+
+<div id="info-panel" class="info-panel">
+  <div class="info-content">
+    <span id="close-info">&times;</span>
+    <h3>About This Network</h3>
+    <p>
+      This interactive network visualizes relationships between lncRNAs and gene symbols.
+      Nodes represent genes and are colored by type:
+      - Blue: lncRNA  
+      - Purple: Protein-coding genes  
+      
+      Edges represent biological pathway interactions.
+      
+    </p>
+  </div>
+</div>
   <h2>D3.js Responsive Network Graph</h2>
   <svg id="network" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid meet"></svg>
 
@@ -94,224 +179,244 @@
   </div>
 
 <script>
-  d3.json("data.json").then(function(data) {
-    const nodes = data.nodes;
-    const links = data.links || data;
+d3.json("data.json").then(function(data) {
+  const nodes = data.nodes;
+  const links = data.links || data;
 
-    // color scale based on node_type
-    const color = d3.scaleOrdinal(d3.schemeCategory10);
+  const SYMBOL_COLOR = "rgb(241,214,252)";
+  const LNCRNA_COLOR = "rgb(213,233,253)";
+  const DEFAULT_COLOR = "rgb(200,200,200)";
+  const BORDER_COLOR = "rgb(189,83,43)";
 
-    const svg = d3.select("#network");
-    const width = 1200;
-    const height = 600;
-    const g = svg.append("g");
+  function colorForType(t) {
+    if (t === "SYMBOL") return SYMBOL_COLOR;
+    if (t === "lncRNA") return LNCRNA_COLOR;
+    return DEFAULT_COLOR;
+  }
 
-    const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(150))
-      .force("charge", d3.forceManyBody().strength(-400))
-      .force("center", d3.forceCenter(width / 2, height / 2));
+  const svg = d3.select("#network");
+  const width = 1200;
+  const height = 600;
+  const g = svg.append("g");
 
-    const link = g.append("g")
-      .attr("stroke", "#999")
-      .attr("stroke-opacity", 0.6)
-      .selectAll("line")
-      .data(links)
-      .join("line")
-      .attr("stroke-width", 1.5);
+  const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(150))
+    .force("charge", d3.forceManyBody().strength(-400))
+    .force("center", d3.forceCenter(width / 2, height / 2));
 
-    const node = g.append("g")
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 1.5)
-      .selectAll("circle")
-      .data(nodes)
-      .join("circle")
-      .attr("r", 16)
-      .attr("fill", d => color(d.node_type))
-      .call(drag(simulation))
-      .on("click", showTooltip);
+  const link = g.append("g")
+    .attr("stroke", "#999")
+    .attr("stroke-opacity", 0.6)
+    .selectAll("line")
+    .data(links)
+    .join("line")
+    .attr("stroke-width", 1.5);
 
-    const label = g.append("g")
-      .selectAll("text")
-      .data(nodes)
-      .join("text")
-      .text(d => d.id)
-      .attr("font-size", 12)
-      .attr("dy", "-1em");
+  const node = g.append("g")
+    .attr("stroke", BORDER_COLOR)
+    .attr("stroke-width", 2)
+    .selectAll("circle")
+    .data(nodes)
+    .join("circle")
+    .attr("r", 20)  // bigger nodes
+    .attr("fill", d => colorForType(d.node_type))
+    .call(d3.drag()
+      .on("start", dragstarted)
+      .on("drag", dragged)
+      .on("end", dragended)
+    );
 
-    simulation.on("tick", () => {
-      link
-        .attr("x1", d => d.source.x)
-        .attr("y1", d => d.source.y)
-        .attr("x2", d => d.target.x)
-        .attr("y2", d => d.target.y);
+  const label = g.append("g")
+    .selectAll("text")
+    .data(nodes)
+    .join("text")
+    .text(d => d.id)
+    .attr("font-size", 22)
+    .attr("dy", "-1em");
 
-      node
-        .attr("cx", d => d.x)
-        .attr("cy", d => d.y);
-
-      label
-        .attr("x", d => d.x)
-        .attr("y", d => d.y);
-    });
-
-    const tooltip = d3.select("#tooltip");
-
-    function showTooltip(event, d) {
-      event.stopPropagation();
-
-      const outgoing = links.filter(l => (l.source.id || l.source) === d.id);
-      const targets = [...new Set(outgoing.map(l => l.target.id || l.target))];
-      const outInteractions = [...new Set(outgoing.map(l => l.interaction))];
-
-      const incoming = links.filter(l => (l.target.id || l.target) === d.id);
-      const sources = [...new Set(incoming.map(l => l.source.id || l.source))];
-      const inInteractions = [...new Set(incoming.map(l => l.interaction))];
-
-      let html = `Gene name: ${d.id}\n`;
-      html += `Sources: ${sources.length ? sources.join(", ") : "None"}\n`;
-      html += `Targets: ${targets.length ? targets.join(", ") : "None"}\n`;
-      html += `Pathways: ${[...new Set([...outInteractions, ...inInteractions])].join("; ") || "None"}`;
-
-      tooltip
-        .style("left", (event.pageX + 15) + "px")
-        .style("top", (event.pageY - 20) + "px")
-        .style("display", "block")
-        .text(html);
-
-      highlightNode(d);
-    }
-
-    function highlightNode(d) {
-      const connectedNodes = new Set();
-      const connectedLinks = [];
-
-      links.forEach(l => {
-        const sourceId = l.source.id || l.source;
-        const targetId = l.target.id || l.target;
-        if (sourceId === d.id || targetId === d.id) {
-          connectedNodes.add(sourceId);
-          connectedNodes.add(targetId);
-          connectedLinks.push(l);
-        }
-      });
-
-      node.classed("dimmed", n => !connectedNodes.has(n.id));
-      label.classed("dimmed", n => !connectedNodes.has(n.id));
-      link.classed("dimmed", l => !connectedLinks.includes(l))
-          .classed("highlight", l => connectedLinks.includes(l));
-    }
-
-    svg.on("click", function(event) {
-      if (event.target.tagName !== "circle") {
-        tooltip.style("display", "none");
-        resetHighlight();
-      }
-    });
-
-    function resetHighlight() {
-      node.classed("dimmed", false);
-      label.classed("dimmed", false);
-      link.classed("dimmed", false).classed("highlight", false);
-    }
-
-    const zoom = d3.zoom().on("zoom", (event) => {
-      g.attr("transform", event.transform);
-    });
-    svg.call(zoom);
-
-    function zoomToFit() {
-      const bounds = g.node().getBBox();
-      const fullWidth = svg.node().clientWidth;
-      const fullHeight = svg.node().clientHeight;
-      const dx = bounds.width;
-      const dy = bounds.height;
-      const x = bounds.x + dx / 2;
-      const y = bounds.y + dy / 2;
-
-      const scale = 0.9 / Math.max(dx / fullWidth, dy / fullHeight);
-      const translate = [fullWidth / 2 - scale * x, fullHeight / 2 - scale * y];
-
-      svg.transition().duration(1000).call(
-        zoom.transform,
-        d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-      );
-    }
-
-    simulation.on("end", zoomToFit);
-    window.addEventListener("resize", zoomToFit);
-
-    function drag(simulation) {
-      function dragstarted(event, d) {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
-      }
-      function dragged(event, d) {
-        d.fx = event.x;
-        d.fy = event.y;
-      }
-      function dragended(event, d) {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
-      }
-      return d3.drag()
-        .on("start", dragstarted)
-        .on("drag", dragged)
-        .on("end", dragended);
-    }
-
-    // === TABLE with colored rows & hover interaction ===
-    const grouped = d3.group(links, d => d.source.id || d.source);
-    const nodeById = new Map(nodes.map(d => [d.id, d]));
-    const tbody = d3.select("#interaction-table tbody");
-
-    grouped.forEach((values, key) => {
-      const targets = [...new Set(values.map(d => d.target.id || d.target))];
-      const interactions = [...new Set(values.map(d => d.interaction))];
-
-      // find node_type for the source
-      const nodeObj = nodeById.get(key);
-      const rowColor = nodeObj ? color(nodeObj.node_type) : "#fff";
-
-      const row = tbody.append("tr")
-        .style("background-color", rowColor + "33") // transparent version
-        .on("mouseenter", () => {
-          if (nodeObj) highlightNode(nodeObj);
-        })
-        .on("mouseleave", () => {
-          resetHighlight();
-        });
-
-      row.append("td").text(key);
-      row.append("td").text(targets.join(", "));
-      row.append("td").text(interactions.join("; "));
-    });
-
-    // Legend based on node_type
-    const nodeTypes = [...new Set(nodes.map(d => d.node_type))];
-    const legend = svg.append("g")
-      .attr("transform", "translate(20,20)");
-
-    legend.selectAll("circle")
-      .data(nodeTypes)
-      .enter()
-      .append("circle")
-      .attr("cx", 0)
-      .attr("cy", (d,i) => i * 20)
-      .attr("r", 6)
-      .attr("fill", d => color(d));
-
-    legend.selectAll("text")
-      .data(nodeTypes)
-      .enter()
-      .append("text")
-      .attr("x", 12)
-      .attr("y", (d,i) => i * 20 + 5)
-      .text(d => d)
-      .attr("font-size", 12)
-      .attr("fill", "#333");
+  simulation.on("tick", () => {
+    link
+      .attr("x1", d => d.source.x)
+      .attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x)
+      .attr("y2", d => d.target.y);
+    node
+      .attr("cx", d => d.x)
+      .attr("cy", d => d.y);
+    label
+      .attr("x", d => d.x)
+      .attr("y", d => d.y);
   });
+
+  const tooltip = d3.select("#tooltip");
+
+  function showTooltip(event, d) {
+    event.stopPropagation();
+    const outgoing = links.filter(l => (l.source.id || l.source) === d.id);
+    const targets = [...new Set(outgoing.map(l => l.target.id || l.target))];
+    const outInteractions = [...new Set(outgoing.map(l => l.interaction))];
+    const incoming = links.filter(l => (l.target.id || l.target) === d.id);
+    const sources = [...new Set(incoming.map(l => l.source.id || l.source))];
+    const inInteractions = [...new Set(incoming.map(l => l.interaction))];
+
+    let html = `Gene name: ${d.id}\n`;
+    html += `Sources: ${sources.length ? sources.join(", ") : "None"}\n`;
+    html += `Targets: ${targets.length ? targets.join(", ") : "None"}\n`;
+    html += `Pathways: ${[...new Set([...outInteractions, ...inInteractions])].join("; ") || "None"}`;
+
+    tooltip
+      .style("left", (event.pageX + 15) + "px")
+      .style("top", (event.pageY - 20) + "px")
+      .style("display", "block")
+      .text(html);
+
+    highlightNode(d);
+    highlightRow(d.id);
+  }
+
+  function highlightNode(d) {
+    const connectedNodes = new Set();
+    const connectedLinks = new Set();
+    links.forEach(l => {
+      const s = l.source.id || l.source;
+      const t = l.target.id || l.target;
+      if (s === d.id || t === d.id) {
+        connectedNodes.add(s);
+        connectedNodes.add(t);
+        connectedLinks.add(l);
+      }
+    });
+    node.classed("dimmed", n => !connectedNodes.has(n.id));
+    label.classed("dimmed", n => !connectedNodes.has(n.id));
+    link.classed("dimmed", l => !connectedLinks.has(l))
+        .classed("highlight", l => connectedLinks.has(l));
+  }
+
+  function resetHighlight() {
+    node.classed("dimmed", false);
+    label.classed("dimmed", false);
+    link.classed("dimmed", false).classed("highlight", false);
+    d3.selectAll("tr.row-highlight").classed("row-highlight", false);
+  }
+
+  const zoom = d3.zoom()
+    .scaleExtent([0.05, 10])
+    .on("zoom", (event) => g.attr("transform", event.transform));
+  svg.call(zoom);
+
+  function zoomToFit() {
+    const bounds = g.node().getBBox();
+    const fullWidth = svg.node().clientWidth;
+    const fullHeight = svg.node().clientHeight;
+    const dx = bounds.width || 1;
+    const dy = bounds.height || 1;
+    const x = bounds.x + dx / 2;
+    const y = bounds.y + dy / 2;
+    const scale = 0.9 / Math.max(dx / fullWidth, dy / fullHeight);
+    const translate = [fullWidth / 2 - scale * x, fullHeight / 2 - scale * y];
+    svg.transition().duration(800).call(
+      zoom.transform,
+      d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+    );
+  }
+  simulation.on("end", () => { zoomToFit(); });
+
+  function dragstarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x; d.fy = d.y;
+  }
+  function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+  function dragended(event, d) {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null; d.fy = null;
+  }
+
+  svg.on("click", function(event) {
+    if (event.target.tagName !== "circle") {
+      tooltip.style("display", "none");
+      resetHighlight();
+    }
+  });
+
+  // --- Build table, lncRNA rows first ---
+  const grouped = d3.group(links, l => l.source.id || l.source);
+  const nodeById = new Map(nodes.map(n => [n.id, n]));
+  const tbody = d3.select("#interaction-table tbody");
+  const rowById = new Map();
+
+  const sortedSources = Array.from(grouped.keys()).sort((a, b) => {
+    const na = nodeById.get(a);
+    const nb = nodeById.get(b);
+    if (!na || !nb) return 0;
+    if (na.node_type === "lncRNA" && nb.node_type !== "lncRNA") return -1;
+    if (na.node_type !== "lncRNA" && nb.node_type === "lncRNA") return 1;
+    return a.localeCompare(b);
+  });
+
+  sortedSources.forEach(sourceId => {
+    const values = grouped.get(sourceId);
+    const targets = [...new Set(values.map(l => l.target.id || l.target))];
+    const interactions = [...new Set(values.map(l => l.interaction))];
+    const nodeObj = nodeById.get(sourceId);
+    const bg = nodeObj ? colorForType(nodeObj.node_type) : "white";
+
+    const row = tbody.append("tr")
+      .style("background-color", bg)
+      .on("mouseenter", () => { if (nodeObj) { highlightNode(nodeObj); highlightRow(sourceId); } })
+      .on("mouseleave", () => { tooltip.style("display", "none"); resetHighlight(); });
+
+    rowById.set(sourceId, row);
+    row.append("td").append("a")
+      .attr("href", `https://www.genecards.org/cgi-bin/carddisp.pl?gene=${sourceId}`)
+      .attr("target", "_blank")
+      .attr("class", "gene-link")
+      .text(sourceId);
+
+    const tdTargets = row.append("td");
+    targets.forEach((t, i) => {
+      tdTargets.append("a")
+        .attr("href", `https://www.genecards.org/cgi-bin/carddisp.pl?gene=${t}`)
+        .attr("target", "_blank")
+        .attr("class", "gene-link")
+        .text(t);
+      if (i < targets.length - 1) tdTargets.append("span").text(", ");
+    });
+    row.append("td").text(interactions.join("; "));
+  });
+
+  function highlightRow(id) {
+    d3.selectAll("tr.row-highlight").classed("row-highlight", false);
+    const r = rowById.get(id);
+    if (r) r.classed("row-highlight", true);
+  }
+  node.on("mouseenter", (event, d) => { highlightNode(d); highlightRow(d.id); });
+  node.on("mouseleave", () => { if (tooltip.style("display") !== "block") resetHighlight(); });
+  node.on("click", showTooltip);
+
+  const nodeTypes = ["lncRNA", "SYMBOL"];
+  const legend = svg.append("g").attr("transform", "translate(20,20)");
+  legend.selectAll("rect")
+    .data(nodeTypes).enter().append("rect")
+    .attr("x", 0).attr("y", (d,i) => i * 22)
+    .attr("width", 12).attr("height", 12)
+    .attr("fill", d => colorForType(d));
+  legend.selectAll("text")
+    .data(nodeTypes).enter().append("text")
+    .attr("x", 18).attr("y", (d,i) => i * 22 + 10)
+    .text(d => d).attr("font-size", 12).attr("fill", "#333");
+});
+
+const infoBtn = document.getElementById("info-btn");
+const infoPanel = document.getElementById("info-panel");
+const closeInfo = document.getElementById("close-info");
+
+infoBtn.addEventListener("click", () => {
+  infoPanel.style.display = "block";
+});
+
+closeInfo.addEventListener("click", () => {
+  infoPanel.style.display = "none";
+});
 </script>
 </body>
 </html>
