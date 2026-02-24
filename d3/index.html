@@ -147,19 +147,26 @@
 <div id="info-panel" class="info-panel">
   <div class="info-content">
     <span id="close-info">&times;</span>
-    <h3>About This Network</h3>
-    <p>
-      This interactive network visualizes relationships between lncRNAs and gene symbols.
-      Nodes represent genes and are colored by type:
-      - Blue: lncRNA  
-      - Purple: Protein-coding genes  
-      
-      Edges represent biological pathway interactions.
-      
-    </p>
+
+
+<p>
+This interactive network presents a comprehensive bioinformatics analysis aimed at uncovering novel regulatory mechanisms mediated by long non-coding RNAs (lncRNAs) in colorectal cancer (CRC). The study integrates multi-omic data from The Cancer Genome Atlas Program (TCGA) together with a unique local dataset from the Aosta Valley (Italy).
+
+The analysis was developed with two main goals: first, to identify lncRNAs located within genomic regions showing recurrent copy number alterations (CNAs), such as duplications and deletions, as well as regions with high mutation frequency in CRC patients; and second, to assign functional relevance to these lncRNAs by correlating their expression with that of their molecular targets, including protein-coding genes, microRNAs (miRNAs), and other lncRNAs, thereby reconstructing biologically meaningful regulatory pathways.
+</p>
+
+<h4>How to Explore the Network</h4>
+
+<ul>
+  <li><strong>Hover over a node</strong> to strongly highlight its direct interactions.</li>
+  <li><strong>Use the mouse scroll wheel</strong> to zoom in and out of the network.</li>
+  <li><strong>Click on a node</strong> to display detailed interaction information.</li>
+  <li><strong>Click on gene names in the table below</strong> to access the corresponding gene entry in GeneCards.</li>
+</ul>
+
   </div>
 </div>
-  <h2>D3.js Responsive Network Graph</h2>
+  <h2>Regulatory network mediated by long non-coding RNAs (lncRNAs) in colorectal cancer</h2>
   <svg id="network" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid meet"></svg>
 
   <div id="tooltip" class="tooltip"></div>
@@ -393,17 +400,34 @@ d3.json("data.json").then(function(data) {
   node.on("mouseleave", () => { if (tooltip.style("display") !== "block") resetHighlight(); });
   node.on("click", showTooltip);
 
-  const nodeTypes = ["lncRNA", "SYMBOL"];
-  const legend = svg.append("g").attr("transform", "translate(20,20)");
-  legend.selectAll("rect")
-    .data(nodeTypes).enter().append("rect")
-    .attr("x", 0).attr("y", (d,i) => i * 22)
-    .attr("width", 12).attr("height", 12)
-    .attr("fill", d => colorForType(d));
-  legend.selectAll("text")
-    .data(nodeTypes).enter().append("text")
-    .attr("x", 18).attr("y", (d,i) => i * 22 + 10)
-    .text(d => d).attr("font-size", 12).attr("fill", "#333");
+const nodeTypes = [
+  { type: "lncRNA", label: "lncRNA genes" },
+  { type: "SYMBOL", label: "protein coding genes" }
+];
+
+const legend = svg.append("g")
+  .attr("transform", "translate(20,20)");
+
+legend.selectAll("rect")
+  .data(nodeTypes)
+  .enter()
+  .append("rect")
+  .attr("x", 0)
+  .attr("y", (d,i) => i * 22)
+  .attr("width", 12)
+  .attr("height", 12)
+  .attr("fill", d => colorForType(d.type));
+
+legend.selectAll("text")
+  .data(nodeTypes)
+  .enter()
+  .append("text")
+  .attr("x", 18)
+  .attr("y", (d,i) => i * 22 + 10)
+  .text(d => d.label)
+  .attr("font-size", 12)
+  .attr("fill", "#333");
+
 });
 
 const infoBtn = document.getElementById("info-btn");
